@@ -44,9 +44,23 @@
     for(const t of CONFIG.transports){try{const r=await fetch(t,{method:'HEAD',cache:'no-store'});if(r.ok){chosen=t;break}}catch{}}
     if(!chosen)throw new Error('No transport found. Tried: '+CONFIG.transports.join(', ')+'. Check which folders your site serves.');
     await conn.setTransport(chosen,[{wisp}]);
+    // Warm-up: make the transport finish loading (libcurl wasm) before the real page is requested.
+    try{
+      const client=new BareMux.BareClient();
+      for(let i=0;i<3;i++){
+        try{await Promise.race([client.fetch('https://example.com/'),new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),8000))]);break}
+        catch(e){if(i===2)console.warn('Transport warm-up failed:',e);else await new Promise(r=>setTimeout(r,800))}
+      }
+    }catch(e){console.warn('Warm-up skipped:',e)}
     say('ready');
     const dest=typeof scramjet.encodeUrl==='function'?scramjet.encodeUrl(u.href):prefix+encodeURIComponent(u.href);
-    location.replace(dest);
+    // Stay on this page (like the demo does) so the transport connection stays alive; show the site in a full-size frame.
+    document.body.style.cssText='margin:0;display:block;background:#fff';
+    document.getElementById('msg').remove();
+    const f=document.createElement('iframe');
+    f.src=dest;f.style.cssText='position:fixed;inset:0;width:100%;height:100%;border:0';
+    f.allow='fullscreen; clipboard-write; autoplay';
+    document.body.appendChild(f);
   }catch(e){show('Proxy error: '+e.message);say('error',e.message)}
 })();
 </script></body></html>
