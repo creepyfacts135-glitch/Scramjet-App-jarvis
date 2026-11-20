@@ -11,7 +11,7 @@
   const CONFIG={
     swPath:'/sw.js',
     baremuxWorker:'/baremux/worker.js',
-    transport:'/epoxy/index.mjs',
+    transports:['/libcurl/index.mjs','/epoxy/index.mjs'],
     files:{wasm:'/scram/scramjet.wasm.wasm',all:'/scram/scramjet.all.js',sync:'/scram/scramjet.sync.js'},
     defaultPrefix:'/scramjet/'
   };
@@ -40,7 +40,10 @@
     await navigator.serviceWorker.register(CONFIG.swPath);
     await navigator.serviceWorker.ready;
     const conn=new BareMux.BareMuxConnection(CONFIG.baremuxWorker);
-    await conn.setTransport(CONFIG.transport,[{wisp}]);
+    let chosen='';
+    for(const t of CONFIG.transports){try{const r=await fetch(t,{method:'HEAD',cache:'no-store'});if(r.ok){chosen=t;break}}catch{}}
+    if(!chosen)throw new Error('No transport found. Tried: '+CONFIG.transports.join(', ')+'. Check which folders your site serves.');
+    await conn.setTransport(chosen,[{wisp}]);
     say('ready');
     const dest=typeof scramjet.encodeUrl==='function'?scramjet.encodeUrl(u.href):prefix+encodeURIComponent(u.href);
     location.replace(dest);
