@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Scramjet launcher</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{margin:0;display:grid;place-items:center;height:100vh;background:#0b1220;color:#9fb4cc;font:14px system-ui}</style></head>
+<body><div id="msg">Starting proxy…</div>
+<!-- Script order matters: BareMux, then Scramjet bundle. Adjust CONFIG below if your Scramjet site uses different paths. -->
+<script src="/baremux/index.js"></script>
+<script src="/scram/scramjet.all.js"></script>
+<script>
+(async()=>{
+  const CONFIG={
+    swPath:'/sw.js',
+    baremuxWorker:'/baremux/worker.js',
+    transport:'/epoxy/index.mjs',
+    files:{wasm:'/scram/scramjet.wasm.wasm',all:'/scram/scramjet.all.js',sync:'/scram/scramjet.sync.js'},
+    defaultPrefix:'/scramjet/'
+  };
+  const q=new URLSearchParams(location.search);
+  const say=(status,message)=>{try{parent!==window&&parent.postMessage({type:'jarvis-scramjet',status,message},'*')}catch{}};
+  const show=t=>{document.getElementById('msg').textContent=t};
+  try{
+    if(q.get('clear')){
+      for(const r of await navigator.serviceWorker.getRegistrations())await r.unregister();
+      if(indexedDB.databases)for(const d of await indexedDB.databases())if(d.name)indexedDB.deleteDatabase(d.name);
+      for(const k of await caches.keys())await caches.delete(k);
+      try{localStorage.clear();sessionStorage.clear()}catch{}
+      show('Proxy session cleared.');say('cleared');return;
+    }
+    const target=q.get('url')||'';
+    let u;try{u=new URL(target)}catch{throw new Error('Missing or invalid address')}
+    if(!/^https?:$/.test(u.protocol))throw new Error('Only http(s) addresses are supported');
+    const prefix=(q.get('prefix')||CONFIG.defaultPrefix).replace(/^\/?/,'/').replace(/\/?$/,'/');
+    const wisp=q.get('wisp')||((location.protocol==='https:'?'wss://':'ws://')+location.host+'/wisp/');
+    if(!/^wss?:\/\//i.test(wisp))throw new Error('Wisp address must start with wss://');
+    if(typeof $scramjetLoadController!=='function')throw new Error('Scramjet files not found at '+CONFIG.files.all);
+    if(typeof BareMux==='undefined')throw new Error('BareMux not found at /baremux/index.js');
+    const {ScramjetController}=$scramjetLoadController();
+    const scramjet=new ScramjetController({prefix,files:CONFIG.files});
+    await scramjet.init();
+    await navigator.serviceWorker.register(CONFIG.swPath);
+    await navigator.serviceWorker.ready;
+    const conn=new BareMux.BareMuxConnection(CONFIG.baremuxWorker);
+    await conn.setTransport(CONFIG.transport,[{wisp}]);
+    say('ready');
+    const dest=typeof scramjet.encodeUrl==='function'?scramjet.encodeUrl(u.href):prefix+encodeURIComponent(u.href);
+    location.replace(dest);
+  }catch(e){show('Proxy error: '+e.message);say('error',e.message)}
+})();
+</script></body></html>
